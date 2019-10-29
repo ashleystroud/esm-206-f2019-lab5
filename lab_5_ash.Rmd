@@ -10,12 +10,240 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+#### Lab 5 objectives
+
+- learn to parse dates with 'lubridate'
+- Get counts of observations with count()
+- Uncount() rows
+- One and two sample t-test
+- Create a heat map with geom_tile()
+
+```{r, include = FALSE}
+#read in data and attach packages
+library(tidyverse)
+library(here)
+library(janitor)
+
+
+lobster_abundance <- read_csv(here::here("data", "lobster_abundance.csv"), 
+                              na = "-99999") %>% 
+  clean_names()
+
+#note NA values stored as -99999, not bad but we need R to know this is a NA. Also do not want all caps, so lowercase snakecase, notice when read in, date is stored as a character which means it has no recognition that these are dates at all. so we need R to recognize as a class of date which we have not done yet. Also note, that lobster count clumps all the count together rather than individual which would be tidy format. we want every observation to exist in its own row. NA is lobsters that were not observed. 
+
+
+```
+
+
+use tidyr::uncount() function to convert our lobster data from frequency format (all grouped together) to case format (each observation has its own row).
+
+```{r}
+
+lobster_tidy <- lobster_abundance %>% 
+  uncount(lobster_count)
+
+
+#but what if want all thos zero counts, you can use function called complete cases which 
+```
+
+
+#### Exploratory data vizualization 
+
+We're only going to consider 'site' as our variable of interest
+
+```{r}
+
+ggplot(lobster_tidy, aes(x = site, y = size_mm)) + 
+  geom_jitter(aes(color = site,
+                  alpha = 0.5,
+                  width = 0.2))
+
+# a lot of obs, mb easier to use a histogram or qq plot
+
+#Histogram
+ggplot(lobster_tidy, aes(x = size_mm)) +
+  geom_histogram(aes(fill = site)) +
+  facet_wrap(~site, scales = "free")
+
+
+#if we are not comparing across faceted graphs, just looking at each one individually, do scale = free to look at each on its own, but this could be irresponsible data vizualization. 
+
+ggplot(lobster_tidy, aes(sample = size_mm)) +
+  geom_qq() +
+  facet_wrap(~site)
+
+#qq wants a argument within aes to say waht sample variable is, plotting against normal distribution. just on its own, it looks pretty linear for overall to theoretical so close to normally distributed. but what about within each site? so facet.  
+
+# overall is there a relationship between my sample and the theoretical? For AQ, yes, for Carp almost all follow ND with excpetion of a few at tail end- dont let these outliers lead you to conclude that you can use a normal assumption to do a test, the rest also see ND. could measurement of Central tendency, i want to compare, but first look into some counts
+```
+
+
+#### Convert the date column to class 'Date'
+
+We'll use the 'lubridate' package to conver to date format then to help us easily parse month and year
+
+```{r}
+
+lobster_date <- lobster_tidy %>% 
+  mutate(
+    date_new = lubridate::mdy(date)
+  )
+
+#so in lubridate, give it the order it is in, which is month date year mdy, and then the column it is in. Then now it is iso format in its own column and if in console check it will say date instead of character
+```
+
+
+Now lets parse year and month using lubridate::month() and lubridate::year():
+
+```{r}
+
+lobster_parse_Date <- lobster_date %>% 
+  mutate(
+    obs_month = lubridate::month(date_new)
+  )
+
+#month
+lobster_parse_Datetwo <- lobster_date %>% 
+  mutate(
+    obs_month = lubridate::month(date_new, label = TRUE),
+    obs_year = lubridate::year(date_new)
+  )
+
+#when use lubridate month it knows month is an ordered factor and that order should be retained . can do this by "class(lobster_parse_Datetwo$obs_month)" in console
+
+
+#be aware, input data in non ambiguous way. 
 
 
 
+```
 
 
 
+Now let's find counts of observed lobsters based on different hierarchical groupings: 
 
+First: let's count lobsters by year and month:
+```{r}
+
+lobster_ym <- lobster_parse_Datetwo %>% 
+  dplyr::count(obs_year, obs_month)
+
+lobster_ym
+
+#at all of our sites, how many observations existed at every year
+
+lobster_y <- lobster_parse_Datetwo %>% 
+  dplyr::count(obs_year) #grouping only by year, it is only variable included here
+
+lobster_y
+
+#want to know, for all of our data, how many lobsters observed at each site
+
+lobster_site <- lobster_parse_Datetwo %>% 
+  dplyr::count(site)
+
+lobster_site
+
+```
+
+
+If we want to create a summary table that contians statistics OTHER than counts by group, its easier to use group_by() + n()
+
+```{r}
+
+lobster_summary <- lobster_parse_Datetwo %>% 
+  group_by(site) %>% 
+  summarise(
+    mean_size = mean(size_mm, na.rm = TRUE),
+    sd_size = sd(size_mm, na.rm = TRUE),
+    lobster_number = n() # same as count but we want other stuff
+  )
+
+
+lobster_summary
+
+#tally is another option to get counts but you need the groupby function. but not summarize. using count assumes you want group by and summarize and combines all...listen to recording. 
+```
+
+
+#### Find confidence intervals
+
+Use t.test() function to find confidence intervals (for one sample) and perform t-tests to compare means of two samples (...this will be covered conceptually in lectures week 6)
+
+
+```{r}
+#pull out a vector of all lobsters ever measured in iv
+
+ivee_lobster <- lobster_tidy %>% 
+  filter(site == "IVEE") %>% 
+  pull(size_mm)
+
+#pull a single column from data frame to have values show up as a vector rather than a DF, use pull function, now it is a vector that contains all these values, and if call in you will get all values in console
+
+t.test(ivee_lobster)
+
+
+
+```
+
+
+#### Two-sample t-test to compare means
+
+i want to know if there is a sig difference between lobster sizes observed at naples and obsters observed at mohawk, and already met assumptions, then two sample t test
+
+```{r}
+
+napl_sample <- lobster_tidy %>% 
+  filter(site == "NAPL") %>% 
+  pull(size_mm)
+  
+mohk_sample <- lobster_tidy %>% 
+  filter(site == "MOHK") %>% 
+  pull(size_mm)
+  
+mn_ttest <- t.test(mohk_sample, napl_sample)
+mn_ttest
+
+#remember t is how different the difference in means is from zero, are they so different that we cn say they are from pops that dont have the same mean. 
+
+```
+
+
+There is a significant difference in lobster length between Naples and Mohawk Reef (t(df) = statistic, p < 0.001, alpha = 0.05). 
+
+```{r}
+#df for lobsters only at these two lcoations
+lobster_mn <- lobster_tidy %>% 
+  filter(site %in% c("NAPL", "MOHK"))
+
+mn_ttest2 <- t.test(size_mm ~ site, data = lobster_mn) #tilde here is as a function of the different levels in the site column, ie look in site column you will see two different groups, i want to do a comparison of size value between the two
+mn_ttest2
+
+#note same results as above t.test, 
+```
+
+
+in console, ?t.test, look at values section, this is names which are stored for each component of output, so if want to call p value, you can use test name then dollar sign, then p.value, it will report actual pvalue. then this is now reproducible rather than copy and paste. 
+
+
+call in r markdown with backticks and then have inline referencing in knit document:
+
+here is the p value: `r mn_ttest2$p.value`
+
+here is my t statistic: `r mn_ttest2$statistic`
+
+
+#### Now: a heatmap!
+
+```{r}
+
+lobster_ys <- lobster_parse_Datetwo %>% 
+  count(obs_year, site)
+
+ggplot(data = lobster_ys, aes(x = obs_year, y = site)) +
+  geom_tile(aes(fill = n))
+
+
+```
 
 
